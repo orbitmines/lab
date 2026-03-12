@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://blulihe6ytjn0"]
+
+[ext_resource type="Script" path="res://test_compression.gd" id="1"]
+
+[node name="TestCompression" type="Node"]
+script = ExtResource("1")

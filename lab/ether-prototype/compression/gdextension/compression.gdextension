@@ -1,0 +1,21 @@
+[configuration]
+
+entry_symbol = "compression_library_init"
+compatibility_minimum = "4.6"
+reloadable = true
+
+[libraries]
+
+linux.debug.x86_64 = "res://bin/libcompression_gdextension.so"
+linux.release.x86_64 = "res://bin/libcompression_gdextension.so"
+windows.debug.x86_64 = "res://bin/compression_gdextension.dll"
+windows.release.x86_64 = "res://bin/compression_gdextension.dll"
+macos.debug = "res://bin/libcompression_gdextension.dylib"
+macos.release = "res://bin/libcompression_gdextension.dylib"
+web.debug.wasm32 = "res://bin/libcompression_gdextension.wasm"
+web.release.wasm32 = "res://bin/libcompression_gdextension.wasm"
+
+[dependencies]
+
+linux.debug.x86_64 = {"libcompression_estimator.so": ""}
+linux.release.x86_64 = {"libcompression_estimator.so": ""}
