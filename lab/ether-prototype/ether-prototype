@@ -1,0 +1,431 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ether Prototype
+# ─────────────────────────────────────────────────────────────────────────────
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ── Paths ────────────────────────────────────────────────────────────────────
+ENWIK8_FILE="$SCRIPT_DIR/enwik8"
+ENWIK9_FILE="$SCRIPT_DIR/enwik9"
+ENWIK8_ZIP="$SCRIPT_DIR/enwik8.zip"
+ENWIK9_ZIP="$SCRIPT_DIR/enwik9.zip"
+ENWIK8_URL="https://mattmahoney.net/dc/enwik8.zip"
+ENWIK9_URL="https://mattmahoney.net/dc/enwik9.zip"
+ENWIK8_ZIP_SIZE=36445475
+ENWIK9_ZIP_SIZE=322592222
+
+# ── Theme ────────────────────────────────────────────────────────────────────
+RST=$'\e[0m'
+BOLD=$'\e[1m'
+DIM=$'\e[2m'
+ORANGE=$'\e[38;5;208m'
+GRAY=$'\e[38;5;245m'
+DARK=$'\e[38;5;240m'
+WHITE=$'\e[38;5;255m'
+RED=$'\e[38;5;203m'
+GREEN=$'\e[38;5;114m'
+BG_ORANGE=$'\e[48;5;208m'
+BG_DARK=$'\e[48;5;236m'
+HIDE_CURSOR=$'\e[?25l'
+SHOW_CURSOR=$'\e[?25h'
+
+SPINNER=("⣾" "⣽" "⣻" "⢿" "⡿" "⣟" "⣯" "⣷")
+SPIN_I=0
+
+# ── State ────────────────────────────────────────────────────────────────────
+declare -a T_NAME=() T_STATUS=() T_MSG=() T_LOG=() T_SF=() T_PID=() T_ROW=() T_DETAIL=() T_POLL=()
+TMPFILES=()
+NEXT_ROW=0
+NEED_FULL_REDRAW=0
+
+CLEANED_UP=false
+
+cleanup() {
+    $CLEANED_UP && return
+    CLEANED_UP=true
+
+    local pid
+    for pid in "${T_PID[@]+"${T_PID[@]}"}"; do
+        [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
+    done
+    for pid in "${T_PID[@]+"${T_PID[@]}"}"; do
+        [[ -n "$pid" ]] && wait "$pid" 2>/dev/null
+    done
+}
+
+on_interrupt() {
+    local -a snap_name=("${T_NAME[@]+"${T_NAME[@]}"}")
+    local -a snap_status=("${T_STATUS[@]+"${T_STATUS[@]}"}")
+    local -a snap_msg=("${T_MSG[@]+"${T_MSG[@]}"}")
+    local -a snap_log=("${T_LOG[@]+"${T_LOG[@]}"}")
+    local -a snap_sf=("${T_SF[@]+"${T_SF[@]}"}")
+    local i
+    for ((i=0; i<${#snap_name[@]}; i++)); do
+        local line; line=$(head -1 "${snap_sf[$i]}" 2>/dev/null) || true
+        if [[ "${line%%:*}" == "ERR" ]]; then
+            snap_status[$i]="error"
+            snap_msg[$i]="${line#*:}"
+        fi
+    done
+
+    cleanup
+
+    {
+        if [[ $NEXT_ROW -gt 0 ]]; then
+            printf '\e[%d;1H\e[2K' "$((NEXT_ROW + 2))"
+        fi
+        printf '%s' "$SHOW_CURSOR"
+
+        local had_errors=false
+        for ((i=0; i<${#snap_name[@]}; i++)); do
+            [[ "${snap_status[$i]}" == "error" ]] && had_errors=true
+        done
+
+        if $had_errors; then
+            printf '\n  %s%sErrors:%s\n' "$RED" "$BOLD" "$RST"
+            for ((i=0; i<${#snap_name[@]}; i++)); do
+                [[ "${snap_status[$i]}" != "error" ]] && continue
+                printf '\n  %s%s── %s ──%s\n' "$RED" "$BOLD" "${snap_name[$i]}" "$RST"
+                if [[ -s "${snap_log[$i]}" ]]; then
+                    tail -30 "${snap_log[$i]}" | while IFS= read -r l; do
+                        printf '  %s%s%s\n' "$DIM" "$l" "$RST"
+                    done
+                else
+                    printf '  %s(no log output)%s\n' "$DIM" "$RST"
+                fi
+            done
+        fi
+        printf '\n'
+    } >/dev/tty 2>/dev/null
+    exit 130
+}
+
+on_exit() {
+    cleanup
+    printf '%s' "$SHOW_CURSOR" >/dev/tty 2>/dev/null
+    local f
+    for f in "${TMPFILES[@]+"${TMPFILES[@]}"}"; do rm -f "$f" 2>/dev/null; done
+}
+trap on_exit EXIT
+trap on_interrupt INT TERM
+trap 'NEED_FULL_REDRAW=1' WINCH
+
+# ── Drawing ──────────────────────────────────────────────────────────────────
+
+BUF=""
+buf()     { BUF+="$*"; }
+buf_goto(){ BUF+=$'\e['"$1"';1H'; }
+buf_clr() { BUF+=$'\e[2K'; }
+flush()   { printf '%s' "$BUF"; BUF=""; }
+
+cached_cols=80
+refresh_cols() { cached_cols=$(tput cols 2>/dev/null || echo 80); }
+
+rule_str() {
+    local out="$DARK"
+    local i; for ((i=0; i<cached_cols; i++)); do out+="─"; done
+    out+="$RST"
+    printf '%s' "$out"
+}
+
+render_header() {
+    buf_goto 1; buf_clr; buf "$(rule_str)"
+    buf_goto 2; buf_clr
+    buf "  ${BG_DARK}${ORANGE} ▌${RST} ${BOLD}${WHITE}OrbitMines${RST} ${GRAY}Ether Prototype${RST}"
+    buf_goto 3; buf_clr; buf "$(rule_str)"
+    buf_goto 4; buf_clr
+}
+
+# ── Format helpers ───────────────────────────────────────────────────────────
+
+fmt_bytes() {
+    local b=$1
+    if   ((b >= 1073741824)); then printf '%.1f GB' "$(echo "scale=1; $b/1073741824" | bc)"
+    elif ((b >= 1048576));    then printf '%.1f MB' "$(echo "scale=1; $b/1048576" | bc)"
+    elif ((b >= 1024));       then printf '%.0f KB' "$(echo "scale=0; $b/1024" | bc)"
+    else printf '%d B' "$b"; fi
+}
+
+fmt_time() {
+    local s=$1
+    if   ((s >= 3600)); then printf '%dh %dm' $((s/3600)) $(((s%3600)/60))
+    elif ((s >= 60));   then printf '%dm %ds' $((s/60)) $((s%60))
+    else printf '%ds' "$s"; fi
+}
+
+bar_str() {
+    local pct=$1 w=$2
+    local fill=$(( pct * w / 100 )) gap=$(( w - pct * w / 100 ))
+    local out="${BG_ORANGE}${BOLD}"
+    local i; for ((i=0; i<fill; i++)); do out+=" "; done
+    out+="${RST}${BG_DARK}"
+    for ((i=0; i<gap; i++)); do out+=" "; done
+    out+="$RST"
+    printf '%s' "$out"
+}
+
+# ── Task registry ───────────────────────────────────────────────────────────
+
+new_task() {
+    local name=$1 poll_fn=$2
+    local i=${#T_NAME[@]}
+    local log; log=$(mktemp); TMPFILES+=("$log")
+    local sf;  sf=$(mktemp);  TMPFILES+=("$sf")
+
+    T_NAME+=("$name")
+    T_STATUS+=("run")
+    T_MSG+=("Waiting...")
+    T_DETAIL+=("")
+    T_LOG+=("$log")
+    T_SF+=("$sf")
+    T_PID+=("")
+    T_POLL+=("$poll_fn")
+    T_ROW+=("$NEXT_ROW")
+
+    NEXT_ROW=$((NEXT_ROW + 3))
+}
+
+start_task() {
+    local i=$1
+    T_MSG[$i]="Starting..."
+}
+
+render_task() {
+    local i=$1
+    local row=${T_ROW[$i]}
+
+    local icon color
+    case "${T_STATUS[$i]}" in
+        run)   icon="${SPINNER[$SPIN_I]}"; color="$ORANGE" ;;
+        done)  icon="✓"; color="$GREEN" ;;
+        error) icon="✗"; color="$RED" ;;
+    esac
+
+    buf_goto "$row"; buf_clr
+    buf "  ${color}${BOLD}${icon}${RST}  ${WHITE}${BOLD}${T_NAME[$i]}${RST}"
+
+    buf_goto $((row+1)); buf_clr
+    local msg="${T_MSG[$i]}"
+    local mx=$((cached_cols - 6))
+    ((${#msg} > mx)) && msg="${msg:0:$mx}"
+    buf "     ${GRAY}${msg}${RST}"
+
+    buf_goto $((row+2)); buf_clr
+    [[ -n "${T_DETAIL[$i]}" ]] && buf "${T_DETAIL[$i]}"
+}
+
+render_frame() {
+    refresh_cols
+    BUF=""
+
+    if ((NEED_FULL_REDRAW)); then
+        buf $'\e[2J'
+        NEED_FULL_REDRAW=0
+    fi
+
+    render_header
+    for ((i=0; i<${#T_NAME[@]}; i++)); do render_task "$i"; done
+    buf_goto "$NEXT_ROW"; buf_clr; buf "$(rule_str)"
+
+    flush
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Workers
+# ─────────────────────────────────────────────────────────────────────────────
+
+worker_enwik() {
+    local sf=$1 log=$2 url=$3 zip=$4 out=$5 expected_size=$6
+    exec >>"$log" 2>&1
+    set +e
+
+    local need_dl=true
+    if [[ -f "$out" ]]; then
+        need_dl=false
+    fi
+
+    if $need_dl; then
+        echo "DL:0:$expected_size" > "$sf"
+        curl -fSL -o "$zip" "$url" &
+        local cpid=$!
+        while kill -0 "$cpid" 2>/dev/null; do
+            [[ -f "$zip" ]] && echo "DL:$(stat -c%s "$zip" 2>/dev/null || echo 0):$expected_size" > "$sf"
+            sleep 0.5
+        done
+        if ! wait "$cpid"; then
+            echo "ERR:Download failed — check connection" > "$sf"; exit 1
+        fi
+
+        echo "ST:Extracting..." > "$sf"
+        if ! unzip -o "$zip" -d "$(dirname "$out")" >> "$log" 2>&1; then
+            echo "ERR:Extraction failed" > "$sf"; exit 1
+        fi
+        rm -f "$zip"
+    fi
+
+    echo "OK:" > "$sf"
+}
+
+# ── Pollers ──────────────────────────────────────────────────────────────────
+
+poll_enwik() {
+    local i=$1 sf=$2
+    local line; line=$(head -1 "$sf" 2>/dev/null) || return
+    local k="${line%%:*}" v="${line#*:}"
+
+    case "$k" in
+        DL)
+            local cur="${v%%:*}" total="${v#*:}"
+            cur=${cur:-0}; total=${total:-1}
+            local pct=0
+            ((total > 0 && cur > 0)) && pct=$((cur * 100 / total))
+            ((pct > 100)) && pct=100
+            T_MSG[$i]="Downloading  $(fmt_bytes "$cur") / $(fmt_bytes "$total")"
+            local bw=$((cached_cols - 16)); ((bw < 10)) && bw=10
+            T_DETAIL[$i]="     $(bar_str "$pct" "$bw")  ${DIM}${GRAY}${pct}%${RST}"
+            ;;
+        ST)  T_MSG[$i]="$v"; T_DETAIL[$i]="" ;;
+        OK)  T_MSG[$i]="Ready"; T_DETAIL[$i]="" ;;
+        ERR) T_MSG[$i]="$v"; T_DETAIL[$i]="" ;;
+    esac
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task loop
+# ─────────────────────────────────────────────────────────────────────────────
+
+tick_tasks() {
+    local alive=false
+    for ((i=0; i<${#T_NAME[@]}; i++)); do
+        [[ "${T_STATUS[$i]}" != "run" ]] && continue
+        local pid="${T_PID[$i]}"
+        [[ -z "$pid" ]] && { alive=true; continue; }
+
+        "${T_POLL[$i]}" "$i" "${T_SF[$i]}"
+
+        if ! kill -0 "$pid" 2>/dev/null; then
+            local rc=0; wait "$pid" || rc=$?
+            "${T_POLL[$i]}" "$i" "${T_SF[$i]}"
+            if ((rc == 0)); then T_STATUS[$i]="done"; else T_STATUS[$i]="error"; fi
+        else
+            alive=true
+        fi
+    done
+
+    SPIN_I=$(( (SPIN_I + 1) % ${#SPINNER[@]} ))
+    render_frame
+    $alive && return 0 || return 1
+}
+
+await_all() {
+    while tick_tasks; do
+        sleep 0.2
+    done
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Checks
+# ─────────────────────────────────────────────────────────────────────────────
+
+enwik8_needed() { [[ ! -f "$ENWIK8_FILE" ]]; }
+enwik9_needed() { [[ ! -f "$ENWIK9_FILE" ]]; }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# prepare (default command — no args)
+# ─────────────────────────────────────────────────────────────────────────────
+
+cmd_prepare() {
+    local t0; t0=$(date +%s)
+    local need_enwik8=false need_enwik9=false
+
+    enwik8_needed && need_enwik8=true
+    enwik9_needed && need_enwik9=true
+
+    if ! $need_enwik8 && ! $need_enwik9; then
+        refresh_cols
+        printf '%s' "$(rule_str)"
+        printf '\n  %s%s▸%s %sEther Prototype — all requirements ready%s\n' "$ORANGE" "$BOLD" "$RST" "$WHITE" "$RST"
+        printf '%s' "$(rule_str)"
+        printf '\n\n'
+        return 0
+    fi
+
+    printf '%s\e[2J' "$HIDE_CURSOR"
+    refresh_cols
+    NEXT_ROW=5
+
+    if $need_enwik8; then
+        new_task "Download enwik8" poll_enwik
+        local ei8=$(( ${#T_NAME[@]} - 1 ))
+        worker_enwik "${T_SF[$ei8]}" "${T_LOG[$ei8]}" "$ENWIK8_URL" "$ENWIK8_ZIP" "$ENWIK8_FILE" "$ENWIK8_ZIP_SIZE" &
+        T_PID[$ei8]=$!
+    fi
+
+    if $need_enwik9; then
+        new_task "Download enwik9" poll_enwik
+        local ei9=$(( ${#T_NAME[@]} - 1 ))
+        worker_enwik "${T_SF[$ei9]}" "${T_LOG[$ei9]}" "$ENWIK9_URL" "$ENWIK9_ZIP" "$ENWIK9_FILE" "$ENWIK9_ZIP_SIZE" &
+        T_PID[$ei9]=$!
+    fi
+
+    render_frame
+    await_all
+
+    # ── Check for errors ─────────────────────────────────────────────────
+    local had_errors=false
+    for ((i=0; i<${#T_NAME[@]}; i++)); do
+        [[ "${T_STATUS[$i]}" == "error" ]] && had_errors=true
+    done
+
+    if $had_errors; then
+        printf '\e[%d;1H' "$((NEXT_ROW + 1))"
+        printf '\n  %s%sErrors:%s\n' "$RED" "$BOLD" "$RST"
+        for ((i=0; i<${#T_NAME[@]}; i++)); do
+            [[ "${T_STATUS[$i]}" != "error" ]] && continue
+            printf '\n  %s%s── %s ──%s\n' "$RED" "$BOLD" "${T_NAME[$i]}" "$RST"
+            if [[ -s "${T_LOG[$i]}" ]]; then
+                tail -30 "${T_LOG[$i]}" | while IFS= read -r l; do
+                    printf '  %s%s%s\n' "$DIM" "$l" "$RST"
+                done
+            else
+                printf '  %s(no log output)%s\n' "$DIM" "$RST"
+            fi
+        done
+        printf '\n%s' "$SHOW_CURSOR"
+        exit 1
+    fi
+
+    local elapsed=$(( $(date +%s) - t0 ))
+    printf '\e[%d;1H\e[2K' "$((NEXT_ROW + 1))"
+    printf '  %s%sReady in %s%s\n\n' "$GRAY" "$DIM" "$(fmt_time $elapsed)" "$RST"
+    printf '%s' "$SHOW_CURSOR"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry
+# ─────────────────────────────────────────────────────────────────────────────
+
+usage() {
+    printf '\n'
+    printf '  %s%s ▌%s %sOrbitMines%s %sEther Prototype%s\n\n' \
+        "$BG_DARK" "$ORANGE" "$RST" "$BOLD$WHITE" "$RST" "$GRAY" "$RST"
+    printf '  %sUsage:%s  ether-prototype [command]\n\n' "$ORANGE" "$RST"
+    printf '  %sCommands:%s\n' "$ORANGE" "$RST"
+    printf '    %s(no args)%s                Prepare requirements (download enwik8, enwik9)\n\n' "$WHITE" "$RST"
+}
+
+main() {
+    if [[ $# -eq 0 ]]; then
+        cmd_prepare
+    else
+        case "$1" in
+            -h|--help) usage ;;
+            *) printf '%s%sUnknown command: %s%s\n' "$RED" "$BOLD" "$1" "$RST"; usage; exit 1 ;;
+        esac
+    fi
+}
+
+main "$@"

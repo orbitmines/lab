@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OrbitMines CLI
+# ─────────────────────────────────────────────────────────────────────────────
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ── Theme ────────────────────────────────────────────────────────────────────
+RST=$'\e[0m'
+BOLD=$'\e[1m'
+ORANGE=$'\e[38;5;208m'
+GRAY=$'\e[38;5;245m'
+DARK=$'\e[38;5;240m'
+WHITE=$'\e[38;5;255m'
+RED=$'\e[38;5;203m'
+BG_DARK=$'\e[48;5;236m'
+
+# ── Drawing ──────────────────────────────────────────────────────────────────
+
+cached_cols=80
+refresh_cols() { cached_cols=$(tput cols 2>/dev/null || echo 80); }
+
+rule_str() {
+    local out="$DARK"
+    local i; for ((i=0; i<cached_cols; i++)); do out+="─"; done
+    out+="$RST"
+    printf '%s' "$out"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Commands
+# ─────────────────────────────────────────────────────────────────────────────
+
+cmd_lab_ether_prototype() {
+    local script="$SCRIPT_DIR/lab/ether-prototype/ether-prototype"
+    if [[ ! -f "$script" ]]; then
+        printf '%s%sError: %s not found%s\n' "$RED" "$BOLD" "$script" "$RST"
+        exit 1
+    fi
+    exec bash "$script" "$@"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry
+# ─────────────────────────────────────────────────────────────────────────────
+
+usage() {
+    printf '\n'
+    printf '  %s%s ▌%s %sOrbitMines%s %sCLI%s\n\n' \
+        "$BG_DARK" "$ORANGE" "$RST" "$BOLD$WHITE" "$RST" "$GRAY" "$RST"
+    printf '  %sUsage:%s  ./orbitmines <domain> <command>\n\n' "$ORANGE" "$RST"
+    printf '  %sCommands:%s\n' "$ORANGE" "$RST"
+    printf '    %slab ether-prototype%s      Setup & prepare the Ether Prototype\n\n' "$WHITE" "$RST"
+}
+
+main() {
+    if [[ $# -lt 2 ]]; then usage; exit 1; fi
+    case "$1" in
+        lab)
+            case "$2" in
+                ether-prototype) shift 2; cmd_lab_ether_prototype "$@" ;;
+                *)   printf '%s%sUnknown command: %s%s\n' "$RED" "$BOLD" "$2" "$RST"; usage; exit 1 ;;
+            esac ;;
+        *)
+            printf '%s%sUnknown domain: %s%s\n' "$RED" "$BOLD" "$1" "$RST"; usage; exit 1 ;;
+    esac
+}
+
+main "$@"
