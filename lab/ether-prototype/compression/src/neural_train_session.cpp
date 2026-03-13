@@ -241,10 +241,14 @@ float neural_compressor_train_gpu(NeuralCompressor* nc,
             if (batch_end > N) batch_end = N;
             int actual_batch = batch_end - batch_start;
 
-            // Clear gradient accumulators + loss before each batch
-            {
+            // Clear loss accumulator every 16 batches (readback happens at batch 15, 31, ...)
+            if ((batch_idx & 15) == 0) {
                 uint32_t zero = 0;
                 wgpuQueueWriteBuffer(b->queue, s->buf_loss, 0, &zero, sizeof(zero));
+            }
+
+            // Clear gradient accumulators before each batch
+            {
                 WGPUCommandEncoder clr = wgpuDeviceCreateCommandEncoder(b->device, nullptr);
                 wgpuCommandEncoderClearBuffer(clr, s->buf_d_embed, 0, (uint64_t)256 * s->emb * sizeof(float));
                 wgpuCommandEncoderClearBuffer(clr, s->buf_d_w1, 0, (uint64_t)s->inp * s->hid * sizeof(float));
