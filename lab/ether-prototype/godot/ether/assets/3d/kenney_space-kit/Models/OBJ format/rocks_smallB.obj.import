@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://jnlvb5ogfrdm"
+path="res://.godot/imported/rocks_smallB.obj-e8e1b89306f5eab5b7eccabbf0f00313.mesh"
+
+[deps]
+
+files=["res://.godot/imported/rocks_smallB.obj-e8e1b89306f5eab5b7eccabbf0f00313.mesh"]
+
+source_file="res://assets/3d/kenney_space-kit/Models/OBJ format/rocks_smallB.obj"
+dest_files=["res://.godot/imported/rocks_smallB.obj-e8e1b89306f5eab5b7eccabbf0f00313.mesh", "res://.godot/imported/rocks_smallB.obj-e8e1b89306f5eab5b7eccabbf0f00313.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

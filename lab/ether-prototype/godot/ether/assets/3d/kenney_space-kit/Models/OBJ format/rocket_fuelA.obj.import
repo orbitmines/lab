@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://b7twetqkoqlok"
+path="res://.godot/imported/rocket_fuelA.obj-25b9aba11039a3f0a3f5b3e87b126000.mesh"
+
+[deps]
+
+files=["res://.godot/imported/rocket_fuelA.obj-25b9aba11039a3f0a3f5b3e87b126000.mesh"]
+
+source_file="res://assets/3d/kenney_space-kit/Models/OBJ format/rocket_fuelA.obj"
+dest_files=["res://.godot/imported/rocket_fuelA.obj-25b9aba11039a3f0a3f5b3e87b126000.mesh", "res://.godot/imported/rocket_fuelA.obj-25b9aba11039a3f0a3f5b3e87b126000.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

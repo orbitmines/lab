@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://dq2fglp3d7uhy"
+path="res://.godot/imported/bed-single-cover.obj-13cbbda9e319e7f4ff82f10a0b25534e.mesh"
+
+[deps]
+
+files=["res://.godot/imported/bed-single-cover.obj-13cbbda9e319e7f4ff82f10a0b25534e.mesh"]
+
+source_file="res://assets/3d/kenney_space-station-kit/Models/OBJ format/bed-single-cover.obj"
+dest_files=["res://.godot/imported/bed-single-cover.obj-13cbbda9e319e7f4ff82f10a0b25534e.mesh", "res://.godot/imported/bed-single-cover.obj-13cbbda9e319e7f4ff82f10a0b25534e.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

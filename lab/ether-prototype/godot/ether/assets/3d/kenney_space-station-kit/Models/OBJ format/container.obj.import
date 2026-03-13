@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://hvkdb1hupoeq"
+path="res://.godot/imported/container.obj-279be7ec53c3b5525dc6b0e9591ccea2.mesh"
+
+[deps]
+
+files=["res://.godot/imported/container.obj-279be7ec53c3b5525dc6b0e9591ccea2.mesh"]
+
+source_file="res://assets/3d/kenney_space-station-kit/Models/OBJ format/container.obj"
+dest_files=["res://.godot/imported/container.obj-279be7ec53c3b5525dc6b0e9591ccea2.mesh", "res://.godot/imported/container.obj-279be7ec53c3b5525dc6b0e9591ccea2.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

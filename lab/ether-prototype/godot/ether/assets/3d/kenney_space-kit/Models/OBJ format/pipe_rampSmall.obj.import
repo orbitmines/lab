@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://ca8fm5bwjkq1v"
+path="res://.godot/imported/pipe_rampSmall.obj-868645634761a960f09af1924fa5ad04.mesh"
+
+[deps]
+
+files=["res://.godot/imported/pipe_rampSmall.obj-868645634761a960f09af1924fa5ad04.mesh"]
+
+source_file="res://assets/3d/kenney_space-kit/Models/OBJ format/pipe_rampSmall.obj"
+dest_files=["res://.godot/imported/pipe_rampSmall.obj-868645634761a960f09af1924fa5ad04.mesh", "res://.godot/imported/pipe_rampSmall.obj-868645634761a960f09af1924fa5ad04.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

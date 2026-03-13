@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://bewd1ldudq0by"
+path="res://.godot/imported/number-8.obj-27bafdfc7809662d2c516ace5cd5a61e.mesh"
+
+[deps]
+
+files=["res://.godot/imported/number-8.obj-27bafdfc7809662d2c516ace5cd5a61e.mesh"]
+
+source_file="res://assets/3d/kenney_prototype-kit/Models/OBJ format/number-8.obj"
+dest_files=["res://.godot/imported/number-8.obj-27bafdfc7809662d2c516ace5cd5a61e.mesh", "res://.godot/imported/number-8.obj-27bafdfc7809662d2c516ace5cd5a61e.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
