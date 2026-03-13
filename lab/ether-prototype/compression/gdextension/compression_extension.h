@@ -9,6 +9,8 @@
 #include "compression/estimator.h"
 #include "compression/gpu_context.h"
 #include "compression/gpu_session.h"
+#include "compression/neural_compressor.h"
+#include "compression/neural_train_session.h"
 
 using namespace godot;
 
@@ -17,6 +19,7 @@ class CompressionEstimator : public RefCounted {
 
     Estimator* est = nullptr;
     GpuSession* session = nullptr;
+    NeuralCompressor* neural = nullptr;
 
 protected:
     static void _bind_methods();
@@ -63,6 +66,14 @@ public:
     void destroy_session();
     int get_session_slots();
     Array evaluate_batch(const Array& transforms);
+
+    // Neural compression: the model IS the compression algorithm
+    Error neural_create(int context_size, int embed_dim, int hidden_dim);
+    void neural_destroy();
+    float neural_train(int seconds);
+    float neural_train_gpu(int seconds);
+    Dictionary neural_compress();
+    static PackedByteArray neural_decompress(const PackedByteArray& compressed_data);
 };
 
 #endif

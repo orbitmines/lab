@@ -25,6 +25,18 @@ target_link_libraries(test_gpu_session compression_estimator)
 target_include_directories(test_gpu_session PRIVATE ${PROJECT_SOURCE_DIR}/include)
 add_test(NAME gpu_session COMMAND test_gpu_session "${ENWIK8_PATH}")
 
+# Neural compression tests
+add_executable(test_neural_compression test_neural_compression.cpp)
+target_link_libraries(test_neural_compression compression_estimator)
+target_include_directories(test_neural_compression PRIVATE ${PROJECT_SOURCE_DIR}/include)
+add_test(NAME neural_compression COMMAND test_neural_compression "${ENWIK8_PATH}" --time 60)
+
+# GPU neural compression tests
+add_executable(test_neural_gpu test_neural_gpu.cpp)
+target_link_libraries(test_neural_gpu compression_estimator)
+target_include_directories(test_neural_gpu PRIVATE ${PROJECT_SOURCE_DIR}/include)
+add_test(NAME neural_gpu COMMAND test_neural_gpu "${ENWIK8_PATH}")
+
 # Benchmark
 add_executable(bench_enwik bench_enwik.cpp)
 target_link_libraries(bench_enwik compression_estimator)

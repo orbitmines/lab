@@ -56,6 +56,7 @@ CompressionEstimator::CompressionEstimator() {
 }
 
 CompressionEstimator::~CompressionEstimator() {
+    if (neural) neural_compressor_destroy(neural);
     if (session) gpu_session_destroy(session);
     if (est) estimator_destroy(est);
 }
@@ -76,6 +77,15 @@ void CompressionEstimator::_bind_methods() {
     ClassDB::bind_method(D_METHOD("destroy_session"), &CompressionEstimator::destroy_session);
     ClassDB::bind_method(D_METHOD("get_session_slots"), &CompressionEstimator::get_session_slots);
     ClassDB::bind_method(D_METHOD("evaluate_batch", "transforms"), &CompressionEstimator::evaluate_batch);
+    ClassDB::bind_method(D_METHOD("neural_create", "context_size", "embed_dim", "hidden_dim"),
+                         &CompressionEstimator::neural_create, DEFVAL(8), DEFVAL(8), DEFVAL(64));
+    ClassDB::bind_method(D_METHOD("neural_destroy"), &CompressionEstimator::neural_destroy);
+    ClassDB::bind_method(D_METHOD("neural_train", "seconds"), &CompressionEstimator::neural_train, DEFVAL(60));
+    ClassDB::bind_method(D_METHOD("neural_train_gpu", "seconds"), &CompressionEstimator::neural_train_gpu, DEFVAL(60));
+    ClassDB::bind_method(D_METHOD("neural_compress"), &CompressionEstimator::neural_compress);
+    ClassDB::bind_static_method("CompressionEstimator",
+        D_METHOD("neural_decompress", "compressed_data"),
+        &CompressionEstimator::neural_decompress);
 }
 
 Error CompressionEstimator::load_data(const PackedByteArray& data) {
@@ -284,4 +294,77 @@ Array CompressionEstimator::evaluate_batch(const Array& transforms) {
     delete[] descs;
     delete[] scores;
     return results;
+}
+
+// ── Neural compression methods ──────────────────────────────────────────────
+
+Error CompressionEstimator::neural_create(int context_size, int embed_dim, int hidden_dim) {
+    if (neural) { neural_compressor_destroy(neural); neural = nullptr; }
+    NeuralCompressorConfig cfg = {};
+    cfg.context_size = context_size;
+    cfg.embed_dim = embed_dim;
+    cfg.hidden_dim = hidden_dim;
+    cfg.learning_rate = 0.001f;
+    cfg.batch_size = 4096;
+    neural = neural_compressor_create(&cfg);
+    return neural ? OK : FAILED;
+}
+
+void CompressionEstimator::neural_destroy() {
+    if (neural) { neural_compressor_destroy(neural); neural = nullptr; }
+}
+
+float CompressionEstimator::neural_train(int seconds) {
+    if (!neural || !est) return 8.0f;
+    uint64_t data_size = 0;
+    const uint8_t* data = estimator_get_data(est, &data_size);
+    if (!data || data_size == 0) return 8.0f;
+    return neural_compressor_train(neural, data, data_size, seconds);
+}
+
+float CompressionEstimator::neural_train_gpu(int seconds) {
+    if (!neural || !est) return 8.0f;
+    uint64_t data_size = 0;
+    const uint8_t* data = estimator_get_data(est, &data_size);
+    if (!data || data_size == 0) return 8.0f;
+    GpuContext* gpu = estimator_get_gpu(est);
+    if (!gpu) return neural_compressor_train(neural, data, data_size, seconds);
+    return neural_compressor_train_gpu(neural, data, data_size, seconds, gpu);
+}
+
+Dictionary CompressionEstimator::neural_compress() {
+    Dictionary result;
+    if (!neural || !est) return result;
+
+    uint64_t data_size = 0;
+    const uint8_t* data = estimator_get_data(est, &data_size);
+    if (!data || data_size == 0) return result;
+
+    uint64_t comp_size = 0;
+    uint8_t* compressed = neural_compressor_compress(neural, data, data_size, &comp_size);
+    if (!compressed) return result;
+
+    PackedByteArray comp_data;
+    comp_data.resize(comp_size);
+    memcpy(comp_data.ptrw(), compressed, comp_size);
+    ::free(compressed);
+
+    result["compressed"] = comp_data;
+    result["original_size"] = (int64_t)data_size;
+    result["compressed_size"] = (int64_t)comp_size;
+    result["ratio"] = (double)comp_size / data_size;
+    result["param_count"] = (int)neural_compressor_param_count(neural);
+    return result;
+}
+
+PackedByteArray CompressionEstimator::neural_decompress(const PackedByteArray& compressed_data) {
+    if (compressed_data.is_empty()) return PackedByteArray();
+    uint64_t out_size = 0;
+    uint8_t* out = neural_compressor_decompress(compressed_data.ptr(), compressed_data.size(), &out_size);
+    if (!out) return PackedByteArray();
+    PackedByteArray result;
+    result.resize(out_size);
+    memcpy(result.ptrw(), out, out_size);
+    ::free(out);
+    return result;
 }

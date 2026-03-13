@@ -46,6 +46,30 @@ static const char TRANSFORM_SUB_MEAN_WGSL_SRC[] =
 static const char TRANSFORM_BYTE_SWAP_WGSL_SRC[] =
 #include "shaders/transform_byte_swap.wgsl.inc"
 ;
+static const char NN_EMBED_GATHER_WGSL_SRC[] =
+#include "shaders/nn_embed_gather.wgsl.inc"
+;
+static const char NN_MATMUL_WGSL_SRC[] =
+#include "shaders/nn_matmul.wgsl.inc"
+;
+static const char NN_BIAS_RELU_WGSL_SRC[] =
+#include "shaders/nn_bias_relu.wgsl.inc"
+;
+static const char NN_SOFTMAX_CE_WGSL_SRC[] =
+#include "shaders/nn_softmax_ce.wgsl.inc"
+;
+static const char NN_RELU_MASK_WGSL_SRC[] =
+#include "shaders/nn_relu_mask.wgsl.inc"
+;
+static const char NN_BIAS_GRAD_WGSL_SRC[] =
+#include "shaders/nn_bias_grad.wgsl.inc"
+;
+static const char NN_EMBED_SCATTER_WGSL_SRC[] =
+#include "shaders/nn_embed_scatter.wgsl.inc"
+;
+static const char NN_ADAM_UPDATE_WGSL_SRC[] =
+#include "shaders/nn_adam_update.wgsl.inc"
+;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -343,6 +367,72 @@ int webgpu_backend_init(WebGpuBackend* b) {
         wgpuPipelineLayoutRelease(tpl);
     }
 
+    // ── Neural network training pipelines ──────────────────────────────────
+
+    // nn_embed_gather: (data_ro, embed_ro, output_rw, params_uniform)
+    {
+        WGPUBindGroupLayoutEntry e[] = { bgle_storage_ro(0), bgle_storage_ro(1), bgle_storage_rw(2), bgle_uniform(3) };
+        PipelineKit k = create_pipeline(b->device, NN_EMBED_GATHER_WGSL_SRC, sizeof(NN_EMBED_GATHER_WGSL_SRC)-1,
+                                         "nn_embed_gather", e, 4);
+        b->nn_embed_gather_shader = k.shader; b->nn_embed_gather_bgl = k.bgl; b->nn_embed_gather_pipeline = k.pipeline;
+    }
+
+    // nn_matmul: (A_ro, B_ro, C_rw, params_uniform)
+    {
+        WGPUBindGroupLayoutEntry e[] = { bgle_storage_ro(0), bgle_storage_ro(1), bgle_storage_rw(2), bgle_uniform(3) };
+        PipelineKit k = create_pipeline(b->device, NN_MATMUL_WGSL_SRC, sizeof(NN_MATMUL_WGSL_SRC)-1,
+                                         "nn_matmul", e, 4);
+        b->nn_matmul_shader = k.shader; b->nn_matmul_bgl = k.bgl; b->nn_matmul_pipeline = k.pipeline;
+    }
+
+    // nn_bias_relu: (data_rw, bias_ro, params_uniform)
+    {
+        WGPUBindGroupLayoutEntry e[] = { bgle_storage_rw(0), bgle_storage_ro(1), bgle_uniform(2) };
+        PipelineKit k = create_pipeline(b->device, NN_BIAS_RELU_WGSL_SRC, sizeof(NN_BIAS_RELU_WGSL_SRC)-1,
+                                         "nn_bias_relu", e, 3);
+        b->nn_bias_relu_shader = k.shader; b->nn_bias_relu_bgl = k.bgl; b->nn_bias_relu_pipeline = k.pipeline;
+    }
+
+    // nn_softmax_ce: (logits_rw, targets_ro, loss_acc_rw, params_uniform, bias_ro)
+    {
+        WGPUBindGroupLayoutEntry e[] = { bgle_storage_rw(0), bgle_storage_ro(1), bgle_storage_rw(2), bgle_uniform(3), bgle_storage_ro(4) };
+        PipelineKit k = create_pipeline(b->device, NN_SOFTMAX_CE_WGSL_SRC, sizeof(NN_SOFTMAX_CE_WGSL_SRC)-1,
+                                         "nn_softmax_ce", e, 5);
+        b->nn_softmax_ce_shader = k.shader; b->nn_softmax_ce_bgl = k.bgl; b->nn_softmax_ce_pipeline = k.pipeline;
+    }
+
+    // nn_relu_mask: (grad_rw, activations_ro, params_uniform)
+    {
+        WGPUBindGroupLayoutEntry e[] = { bgle_storage_rw(0), bgle_storage_ro(1), bgle_uniform(2) };
+        PipelineKit k = create_pipeline(b->device, NN_RELU_MASK_WGSL_SRC, sizeof(NN_RELU_MASK_WGSL_SRC)-1,
+                                         "nn_relu_mask", e, 3);
+        b->nn_relu_mask_shader = k.shader; b->nn_relu_mask_bgl = k.bgl; b->nn_relu_mask_pipeline = k.pipeline;
+    }
+
+    // nn_bias_grad: (d_data_ro, d_bias_rw, params_uniform)
+    {
+        WGPUBindGroupLayoutEntry e[] = { bgle_storage_ro(0), bgle_storage_rw(1), bgle_uniform(2) };
+        PipelineKit k = create_pipeline(b->device, NN_BIAS_GRAD_WGSL_SRC, sizeof(NN_BIAS_GRAD_WGSL_SRC)-1,
+                                         "nn_bias_grad", e, 3);
+        b->nn_bias_grad_shader = k.shader; b->nn_bias_grad_bgl = k.bgl; b->nn_bias_grad_pipeline = k.pipeline;
+    }
+
+    // nn_embed_scatter: (data_ro, d_input_ro, d_embed_rw, params_uniform)
+    {
+        WGPUBindGroupLayoutEntry e[] = { bgle_storage_ro(0), bgle_storage_ro(1), bgle_storage_rw(2), bgle_uniform(3) };
+        PipelineKit k = create_pipeline(b->device, NN_EMBED_SCATTER_WGSL_SRC, sizeof(NN_EMBED_SCATTER_WGSL_SRC)-1,
+                                         "nn_embed_scatter", e, 4);
+        b->nn_embed_scatter_shader = k.shader; b->nn_embed_scatter_bgl = k.bgl; b->nn_embed_scatter_pipeline = k.pipeline;
+    }
+
+    // nn_adam_update: (weights_rw, grads_rw, adam_m_rw, adam_v_rw, params_uniform)
+    {
+        WGPUBindGroupLayoutEntry e[] = { bgle_storage_rw(0), bgle_storage_rw(1), bgle_storage_rw(2), bgle_storage_rw(3), bgle_uniform(4) };
+        PipelineKit k = create_pipeline(b->device, NN_ADAM_UPDATE_WGSL_SRC, sizeof(NN_ADAM_UPDATE_WGSL_SRC)-1,
+                                         "nn_adam_update", e, 5);
+        b->nn_adam_update_shader = k.shader; b->nn_adam_update_bgl = k.bgl; b->nn_adam_update_pipeline = k.pipeline;
+    }
+
     if (!b->histogram_pipeline || !b->entropy_pipeline || !b->bigram_pipeline ||
         !b->lz_pipeline || !b->huffman_enc_pipeline || !b->huffman_dec_pipeline) {
         fprintf(stderr, "[webgpu] One or more pipelines failed to create\n");
@@ -362,6 +452,14 @@ void webgpu_backend_destroy(WebGpuBackend* b) {
         {b->lz_shader, b->lz_bgl, b->lz_pipeline},
         {b->huffman_enc_shader, b->huffman_enc_bgl, b->huffman_enc_pipeline},
         {b->huffman_dec_shader, b->huffman_dec_bgl, b->huffman_dec_pipeline},
+        {b->nn_embed_gather_shader, b->nn_embed_gather_bgl, b->nn_embed_gather_pipeline},
+        {b->nn_matmul_shader, b->nn_matmul_bgl, b->nn_matmul_pipeline},
+        {b->nn_bias_relu_shader, b->nn_bias_relu_bgl, b->nn_bias_relu_pipeline},
+        {b->nn_softmax_ce_shader, b->nn_softmax_ce_bgl, b->nn_softmax_ce_pipeline},
+        {b->nn_relu_mask_shader, b->nn_relu_mask_bgl, b->nn_relu_mask_pipeline},
+        {b->nn_bias_grad_shader, b->nn_bias_grad_bgl, b->nn_bias_grad_pipeline},
+        {b->nn_embed_scatter_shader, b->nn_embed_scatter_bgl, b->nn_embed_scatter_pipeline},
+        {b->nn_adam_update_shader, b->nn_adam_update_bgl, b->nn_adam_update_pipeline},
     };
     for (auto& k : kits) release_pipeline_kit(&k);
     // Transform pipelines

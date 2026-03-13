@@ -129,6 +129,65 @@ func _test_gpu_session(est: CompressionEstimator) -> void:
 	est.destroy_session()
 
 
+func _test_neural_compression(est: CompressionEstimator) -> void:
+	print("=== Neural Compression (model IS the algorithm) ===\n")
+
+	# Use 64KB of loaded data (or synthetic if no enwik8)
+	var test_data := PackedByteArray()
+	test_data.resize(8192)  # 8 KB for quick Godot test
+	for i in test_data.size():
+		test_data[i] = (i * 7 + i / 100) % 256
+	est.load_data(test_data)
+
+	# Create neural compressor
+	var err := est.neural_create(8, 8, 64)
+	if err != OK:
+		print("  neural_create FAILED: ", err)
+		return
+
+	# Train on CPU first for baseline
+	print("  Training CPU for 5 seconds on %d bytes..." % test_data.size())
+	var t0 := Time.get_ticks_msec()
+	var bpb_cpu := est.neural_train(5)
+	var t1 := Time.get_ticks_msec()
+	print("  CPU bpb: %.4f (%d ms)" % [bpb_cpu, t1 - t0])
+
+	# Recreate and train on GPU
+	est.neural_destroy()
+	est.neural_create(8, 8, 64)
+	print("  Training GPU for 5 seconds on %d bytes..." % test_data.size())
+	t0 = Time.get_ticks_msec()
+	var bpb := est.neural_train_gpu(5)
+	t1 = Time.get_ticks_msec()
+	print("  GPU bpb: %.4f (%d ms)" % [bpb, t1 - t0])
+	print("  GPU speedup: GPU reached %.4f bpb vs CPU %.4f bpb in same time" % [bpb, bpb_cpu])
+
+	# Compress
+	var result := est.neural_compress()
+	if result.is_empty():
+		print("  neural_compress FAILED")
+		est.neural_destroy()
+		return
+
+	var comp_data: PackedByteArray = result["compressed"]
+	var orig_size: int = result["original_size"]
+	var comp_size: int = result["compressed_size"]
+	print("  Compressed: %d -> %d bytes (%.1f%%)" % [orig_size, comp_size, result["ratio"] * 100.0])
+	print("  Parameters: %d" % result["param_count"])
+
+	# Decompress and verify roundtrip
+	var decompressed := CompressionEstimator.neural_decompress(comp_data)
+	if decompressed.is_empty():
+		print("  neural_decompress FAILED")
+	elif decompressed == test_data:
+		print("  Roundtrip: OK")
+	else:
+		print("  Roundtrip: MISMATCH (got %d bytes)" % decompressed.size())
+
+	est.neural_destroy()
+	print()
+
+
 func _ready() -> void:
 	print("=== CompressionEstimator GDExtension Test ===\n")
 
@@ -204,5 +263,8 @@ func _ready() -> void:
 			print("  load_file FAILED: ", err)
 	else:
 		print("enwik8 not found at: ", abs_path, " (skipping)")
+
+	# --- Neural compression ---
+	_test_neural_compression(est)
 
 	print("=== All tests complete ===")

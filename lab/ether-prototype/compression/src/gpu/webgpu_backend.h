@@ -45,6 +45,39 @@ struct WebGpuBackend {
     WGPUShaderModule transform_shaders[5];   // TRANSFORM_COUNT
     WGPUComputePipeline transform_pipelines[5];
 
+    // Neural network training pipelines
+    WGPUShaderModule nn_embed_gather_shader;
+    WGPUComputePipeline nn_embed_gather_pipeline;
+    WGPUBindGroupLayout nn_embed_gather_bgl;
+
+    WGPUShaderModule nn_matmul_shader;
+    WGPUComputePipeline nn_matmul_pipeline;
+    WGPUBindGroupLayout nn_matmul_bgl;
+
+    WGPUShaderModule nn_bias_relu_shader;
+    WGPUComputePipeline nn_bias_relu_pipeline;
+    WGPUBindGroupLayout nn_bias_relu_bgl;
+
+    WGPUShaderModule nn_softmax_ce_shader;
+    WGPUComputePipeline nn_softmax_ce_pipeline;
+    WGPUBindGroupLayout nn_softmax_ce_bgl;
+
+    WGPUShaderModule nn_relu_mask_shader;
+    WGPUComputePipeline nn_relu_mask_pipeline;
+    WGPUBindGroupLayout nn_relu_mask_bgl;
+
+    WGPUShaderModule nn_bias_grad_shader;
+    WGPUComputePipeline nn_bias_grad_pipeline;
+    WGPUBindGroupLayout nn_bias_grad_bgl;
+
+    WGPUShaderModule nn_embed_scatter_shader;
+    WGPUComputePipeline nn_embed_scatter_pipeline;
+    WGPUBindGroupLayout nn_embed_scatter_bgl;
+
+    WGPUShaderModule nn_adam_update_shader;
+    WGPUComputePipeline nn_adam_update_pipeline;
+    WGPUBindGroupLayout nn_adam_update_bgl;
+
     bool valid;
 };
 

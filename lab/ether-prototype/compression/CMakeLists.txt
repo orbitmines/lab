@@ -188,6 +188,8 @@ set(CORE_SOURCES
     src/cpu/arithmetic_cpu.cpp
     src/cpu/ans_cpu.cpp
     src/cpu/reference_wrappers.cpp
+    src/neural_compressor.cpp
+    src/neural_train_session.cpp
 )
 
 if(HAS_WGPU)
