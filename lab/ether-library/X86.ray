@@ -1,0 +1,94 @@
+// .ray3/Assembly/X8664.ray — assembly grammar lifted from Intel XED's iform table.
+  // Nothing about mnemonics, register names, or operand shapes is written here;
+  // every production is whatever XED's compiled-in table says it is.
+
+  namespace X8664Assembly | "x86-64 Assembly" < Language(".asm" | ".s")
+    location &= "https://github.com/intelxed/xed"
+            &  "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html"
+
+    // Pull in the entire XED instruction table as the source-of-truth production
+    // set. One row per (ICLASS, IFORM) pair.  ⊞ = "the table".
+    table | (internal ⊞) : Form[] = XED.iforms
+
+    // ─── Productions ────────────────────────────────────────────────────────
+    class Form < Iterable<Operand>
+      iclass    | (internal mnemonic ⊢) : Mnemonic
+      operands  | (internal slots    ⨁) : Operand[]
+      extension : ISA.Extension
+      isa_set   : ISA.Set
+      attrs     : Attribute[]
+
+      // The form *is* its own production:  ⊢ ' ' (slot, slot, …)
+      => ⊢ ' ' (⨁~{.visible}).join(", ")
+
+    // Mnemonic terminal set = the distinct ICLASSes that actually appear.
+    Mnemonic = ⊞~{.iclass}.unique
+
+    // ─── Operand alternatives ───────────────────────────────────────────────
+    class Operand
+      | Register
+      | Memory
+      | Immediate
+      | Branch
+
+      direction | (internal action ⇄) : R | W | RW | CR | CW | CRW
+      visible   | (internal vis    ∃) : EXPLICIT | IMPLICIT | SUPPRESSED
+
+      // Suppressed and implicit operands are real but not in the surface syntax.
+      => ∅ unless visible == EXPLICIT
+
+    class Register < Operand
+      // XED operand `details` field — the nonterminal that picks the slot:
+      //   GPR64_R, GPR32_B, XMM_R, MMX_B, ST_R, SEG, CR_R, …
+      class : XED.RegClass
+      width : Bits     // from XED.xtype (I8 / I32 / I64 / F32 / F64 / F80 …)
+
+      // Terminals = XED's register enum filtered by class.
+      // E.g. GPR64_R ⇒ rax | rcx | rdx | rbx | rsp | rbp | rsi | rdi | r8..r15.
+      => XED.reg_enum~{.class == this.class}.any
+
+    class Memory < Operand
+      size | (internal ↔) : MemorySize         // size-prefix keyword
+
+      segment | (internal seg σ) : Register{.class ∈ XED.RegClass.SEG}?
+      base    | (internal ⊢)     : Register?
+      index   | (internal ⊕)     : Register?
+      scale   | (internal ×)     : 1 | 2 | 4 | 8 = 1
+      disp    | (internal Δ)     : Integer?
+
+      => ↔ ' ptr ' '[' (σ ':')? ⊢? ('+' ⊕ '*' ×)? Δ? ']'
+
+    class Immediate < Operand
+      width : Bits = XED.xtype.bits
+      => Integer{.bits ≤ width}
+
+    class Branch < Operand   // RELBR — branch displacement
+      width : Bits
+      => Label | Integer{.bits ≤ width}
+
+    // Size keywords come from XED's operand-width enum, not from us.
+    MemorySize = XED.operand_width_enum.symbols  // byte | word | dword | qword | xmmword | ymmword | zmmword | …
+
+    // ─── Statement-level grammar ────────────────────────────────────────────
+    class Statement
+      label   : (Identifier ':')?
+      prefix  : Prefix*
+      form    : ⊞~{.iclass == mnemonic}        // pick any matching iform
+      comment : (';' .*)?
+
+      // Static check: at least one iform's operand pattern matches what was written.
+      dynamically assert ∃ form
+
+    Prefix = XED.⊞.attrs ~{∈ {LOCK, REP, REPNE, REPE}}.unique
+
+    // ─── ISA gating, also lifted from XED ───────────────────────────────────
+    namespace ISA
+      Extension = ⊞~{.extension}.unique     // BASE | X87 | SSE2 | AVX | AVX512EVEX | APXEVEX | …
+      Set       = ⊞~{.isa_set}.unique       // AVX512BW_512 | AVX512F_512 | …
+
+      available_on (cpu: CPU) =>
+        cpu.cpuid       ⊇ this.required_cpuid ∧
+        (¬ this.requires_xsave ∨ cpu.xcr0 ⊇ this.required_xsave)
+
+    // Surface direction: Intel-syntax x86 reads left-to-right, mnemonic ⊢ first.
+    direction = left-to-right

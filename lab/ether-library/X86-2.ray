@@ -1,0 +1,126 @@
+ // .ray3/library/XED.ray — bridge to Intel XED via its bundled executables.
+  namespace XED | "x86 Encoder Decoder" < Tool
+    location &= "https://github.com/intelxed/xed"
+
+    // Bundled sources.  The `bundled` qualifier ties artefact lifetime to this
+    // namespace, so cloning, building, and cleanup are scoped here.
+    bundled source : Directory = "https://github.com/intelxed/xed".clone
+    bundled mbuild : Directory = "https://github.com/intelxed/mbuild".clone
+
+    // XED's own Python builder.  No custom build glue.
+    builder : Python.Program = source / "mfile.py"
+
+    build => builder.run(cwd: source, PYTHONPATH: mbuild)
+
+    obj : Directory = source / "obj/wkit"
+
+    // ─── Executables, one per binary that lands in obj/wkit/bin/ ────────────
+    xed                : Executable = obj / "bin/xed"
+    `xed-tables`       : Executable = obj / "bin/xed-tables"
+    `xed-enc-asmparse` : Executable = obj / "bin/xed-enc-asmparse"
+    `xed-dec`          : Executable = obj / "bin/xed-dec"
+    `xed-enc`          : Executable = obj / "bin/xed-enc"
+    `xed-ex1`          : Executable = obj / "bin/xed-ex1"
+
+    // ─── XED-typed records (names taken verbatim from xed_inst_t / xed_operand_t) ──
+    class inst
+      iclass     : iclass_enum_t
+      iform      : iform_enum_t
+      category   : category_enum_t
+      extension  : extension_enum_t
+      isa_set    : isa_set_enum_t
+      attributes : attribute_enum_t[]
+      operands   : operand[]
+
+    class operand
+      name       : operand_enum_t                  // REG0 | MEM0 | IMM0 | RELBR | BASE0 | INDEX | SCALE | SEG0 | DISP | ...
+      visibility : operand_visibility_enum_t       // EXPLICIT | IMPLICIT | SUPPRESSED
+      action     : operand_action_enum_t           // R | W | RW | CR | CW | CRW
+      type       : operand_type_enum_t             // REG | IMM | IMM_CONST | NT_LOOKUP_FN | ERROR
+      xtype      : operand_element_xtype_enum_t    // F32 | F64 | F80 | I8 | U8 | I32 | U32 | I64 | INT | INVALID | ...
+      nt_name    : nonterminal_enum_t?             // when type == NT_LOOKUP_FN
+      reg        : reg_enum_t?                     // when type == REG
+
+    // ─── Methods — each is a thin spawn of the matching binary ──────────────
+    iforms : inst[] = `xed-tables`.run.stdout.parse(`xed-tables`.format)
+
+    decode      (bytes: HexString,  mode: 16 | 32 | 64 = 64) => xed.run("-" mode, "-d", bytes).stdout
+    disassemble (file:  File,       mode: 16 | 32 | 64 = 64) => xed.run("-" mode, "-i", file.path).stdout
+    encode      (asm:   String,     mode: 16 | 32 | 64 = 64) => `xed-enc-asmparse`.run("-" mode, asm).stdout
+
+    // ─── Enums sourced from XED's generated headers (no values hand-written) ───
+    iclass_enum_t                : enum = source / "include/public/xed/xed-iclass-enum.h"
+    iform_enum_t                 : enum = source / "include/public/xed/xed-iform-enum.h"
+    category_enum_t              : enum = source / "include/public/xed/xed-category-enum.h"
+    extension_enum_t             : enum = source / "include/public/xed/xed-extension-enum.h"
+    isa_set_enum_t               : enum = source / "include/public/xed/xed-isa-set-enum.h"
+    attribute_enum_t             : enum = source / "include/public/xed/xed-attribute-enum.h"
+    operand_enum_t               : enum = source / "include/public/xed/xed-operand-enum.h"
+    operand_visibility_enum_t    : enum = source / "include/public/xed/xed-operand-visibility-enum.h"
+    operand_action_enum_t        : enum = source / "include/public/xed/xed-operand-action-enum.h"
+    operand_type_enum_t          : enum = source / "include/public/xed/xed-operand-type-enum.h"
+    operand_element_xtype_enum_t : enum = source / "include/public/xed/xed-operand-element-xtype-enum.h"
+    reg_enum_t                   : enum = source / "include/public/xed/xed-reg-enum.h"
+    reg_class_enum_t             : enum = source / "include/public/xed/xed-reg-class-enum.h"
+    nonterminal_enum_t           : enum = source / "include/public/xed/xed-nonterminal-enum.h"
+    operand_width_enum_t         : enum = source / "include/public/xed/xed-operand-width-enum.h"
+
+  And the grammar file, expressed only via XED's own names — Register/Memory/Immediate become dispatch on operand.name, not
+  invented subclasses:
+
+  // .ray3/Assembly/X8664.ray — assembly grammar lifted from the XED iform table.
+  namespace X8664Assembly | "x86-64 Assembly" < Language(".asm" | ".s")
+    location &= "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html"
+
+    table : XED.inst[] = XED.iforms
+
+    // ─── Productions ────────────────────────────────────────────────────────
+    class statement
+      label   : (Identifier ":")?
+      prefix  : prefix_enum_t[]
+      form    : table ~ {.iclass == mnemonic}
+      comment : (";" .*)?
+
+      dynamically assert ∃ form
+
+    class form < XED.inst
+      // iclass is the initial element of every form — same role ⊢ plays in Ray.ray.
+      iclass | (internal ⊢) : XED.iclass_enum_t
+
+      => ⊢ " " (operands ~ {.visibility == EXPLICIT}).join(", ")
+
+    // Dispatch on XED's operand_enum_t prefix; there are no other categories.
+    class operand < XED.operand
+      => None unless visibility == EXPLICIT
+
+      => match name
+        REG*   => reg_enum_t ~ {∈ nt_name.members}.any
+        MEM*   => operand_width " ptr [" address "]"
+        IMM*   => Integer{.bits ≤ xtype.bits}
+        RELBR  => Label | Integer{.bits ≤ xtype.bits}
+        AGEN   => "[" address "]"
+
+      address =>
+        seg   = operands ~ {.name ∈ {SEG0, SEG1}}.first
+        base  = operands ~ {.name ∈ {BASE0, BASE1}}.first
+        index = operands ~ {.name == INDEX}.first
+        scale = operands ~ {.name == SCALE}.first
+        disp  = operands ~ {.name == DISP}.first
+
+        (seg ":")? base? ("+" index "*" scale)? disp?
+
+    // ─── Terminal sets — every one of these is "ask XED" ────────────────────
+    Mnemonic       = (table ~ {.iclass}).unique
+    Extension      = (table ~ {.extension}).unique
+    ISA            = (table ~ {.isa_set}).unique
+    prefix_enum_t  = (table.attributes ~ {∈ {LOCK, REP, REPNE, REPE}}).unique
+    operand_width  = XED.operand_width_enum_t
+
+    // ─── ISA gating ─────────────────────────────────────────────────────────
+    available_on (form: form, cpu: CPU) =>
+      form.isa_set.required_cpuid.every (b => b ∈ cpu.cpuid)
+      & (¬ form.isa_set.requires_xsave | form.isa_set.required_xsave.every (b => b ∈ cpu.xcr0))
+
+    direction = left-to-right
+
+

@@ -1,0 +1,34 @@
+{
+  "name": "@orbitmines/ether-library",
+  "version": "0.4.0-E2026.0D.0",
+  "private": false,
+  "repository": "https://github.com/orbitmines/ray",
+  "type": "module",
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "test": "tsx src/test.ts",
+    "test4": "tsx src/test4.ts"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
