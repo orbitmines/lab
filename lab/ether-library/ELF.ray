@@ -1,0 +1,282 @@
+  // .ray3/library/LLVM.ray — bridge to LLVM's Object/BinaryFormat via its bundled executables.
+  namespace LLVM | "LLVM" < Tool
+    location &= "https://llvm.org"
+
+    // Bundled sources.  The `bundled` qualifier ties artefact lifetime to this
+    // namespace, so cloning, building, and cleanup are scoped here.
+    bundled source : Directory = "https://github.com/llvm/llvm-project".clone
+
+    // LLVM's own CMake driver.  No custom build glue.
+    builder : CMake.Program = source / "llvm"
+
+    build => builder.configure(
+      cwd: source / "build",
+      generator: "Ninja",
+      LLVM_TARGETS_TO_BUILD: "X86;AArch64;RISCV",
+      LLVM_ENABLE_PROJECTS: "",
+      CMAKE_BUILD_TYPE: "Release"
+    ) ; Ninja.run(
+      "llvm-readelf llvm-readobj llvm-objdump llvm-nm llvm-objcopy llvm-strip "
+      "llvm-addr2line llvm-size llvm-ar llvm-ranlib llvm-dwarfdump "
+      "llvm-cxxfilt llvm-symbolizer llvm-strings llvm-bitcode-strip "
+      "llvm-debuginfod-find llvm-bolt llvm-otool",
+      cwd: source / "build"
+    )
+
+    obj : Directory = source / "build"
+
+    // ─── Executables, one per binary that lands in build/bin/ ───────────────
+    `llvm-readelf`         : Executable = obj / "bin/llvm-readelf"
+    `llvm-readobj`         : Executable = obj / "bin/llvm-readobj"
+    `llvm-objdump`         : Executable = obj / "bin/llvm-objdump"
+    `llvm-nm`              : Executable = obj / "bin/llvm-nm"
+    `llvm-objcopy`         : Executable = obj / "bin/llvm-objcopy"
+    `llvm-strip`           : Executable = obj / "bin/llvm-strip"
+    `llvm-addr2line`       : Executable = obj / "bin/llvm-addr2line"
+    `llvm-size`            : Executable = obj / "bin/llvm-size"
+    `llvm-ar`              : Executable = obj / "bin/llvm-ar"
+    `llvm-ranlib`          : Executable = obj / "bin/llvm-ranlib"
+    `llvm-dwarfdump`       : Executable = obj / "bin/llvm-dwarfdump"
+    `llvm-cxxfilt`         : Executable = obj / "bin/llvm-cxxfilt"
+    `llvm-symbolizer`      : Executable = obj / "bin/llvm-symbolizer"
+    `llvm-strings`         : Executable = obj / "bin/llvm-strings"
+    `llvm-bitcode-strip`   : Executable = obj / "bin/llvm-bitcode-strip"
+    `llvm-debuginfod-find` : Executable = obj / "bin/llvm-debuginfod-find"
+    `llvm-otool`           : Executable = obj / "bin/llvm-otool"
+
+    // ─── ELF-typed records (names taken verbatim from llvm/BinaryFormat/ELF.h) ─
+    // Field names below are the System V gABI names; LLVM's header keeps them
+    // verbatim under `namespace llvm::ELF`.  Sizes are the 64-bit variants —
+    // Elf32_* mirror them with narrower fields.
+    class Elf64_Ehdr
+      e_ident     : unsigned_char[EI_NIDENT]   // EI_MAG0..EI_PAD identification bytes
+      e_type      : Elf64_Half                 // ET_NONE | ET_REL | ET_EXEC | ET_DYN | ET_CORE
+      e_machine   : Elf64_Half                 // EM_NONE | EM_X86_64 | EM_AARCH64 | EM_RISCV | ...
+      e_version   : Elf64_Word                 // EV_NONE | EV_CURRENT
+      e_entry     : Elf64_Addr
+      e_phoff     : Elf64_Off
+      e_shoff     : Elf64_Off
+      e_flags     : Elf64_Word
+      e_ehsize    : Elf64_Half
+      e_phentsize : Elf64_Half
+      e_phnum     : Elf64_Half
+      e_shentsize : Elf64_Half
+      e_shnum     : Elf64_Half
+      e_shstrndx  : Elf64_Half
+
+    class Elf64_Phdr
+      p_type   : Elf64_Word                    // PT_NULL | PT_LOAD | PT_DYNAMIC | PT_INTERP | PT_NOTE | PT_PHDR | PT_TLS | PT_GNU_*
+      p_flags  : Elf64_Word                    // PF_X | PF_W | PF_R | PF_MASKOS | PF_MASKPROC
+      p_offset : Elf64_Off
+      p_vaddr  : Elf64_Addr
+      p_paddr  : Elf64_Addr
+      p_filesz : Elf64_Xword
+      p_memsz  : Elf64_Xword
+      p_align  : Elf64_Xword
+
+    class Elf64_Shdr
+      sh_name      : Elf64_Word
+      sh_type      : Elf64_Word                // SHT_NULL | SHT_PROGBITS | SHT_SYMTAB | SHT_STRTAB | SHT_RELA | SHT_HASH | SHT_DYNAMIC | SHT_NOTE | SHT_NOBITS | SHT_REL | SHT_DYNSYM | SHT_GROUP | SHT_LLVM_*
+      sh_flags     : Elf64_Xword               // SHF_WRITE | SHF_ALLOC | SHF_EXECINSTR | SHF_MERGE | SHF_STRINGS | SHF_INFO_LINK | SHF_LINK_ORDER | SHF_GROUP | SHF_TLS | SHF_COMPRESSED
+      sh_addr      : Elf64_Addr
+      sh_offset    : Elf64_Off
+      sh_size      : Elf64_Xword
+      sh_link      : Elf64_Word
+      sh_info      : Elf64_Word
+      sh_addralign : Elf64_Xword
+      sh_entsize   : Elf64_Xword
+
+    class Elf64_Sym
+      st_name  : Elf64_Word
+      st_info  : unsigned_char                 // getBinding(st_info) | getType(st_info)
+      st_other : unsigned_char                 // getVisibility(st_other)
+      st_shndx : Elf64_Half                    // SHN_UNDEF | SHN_ABS | SHN_COMMON | section index
+      st_value : Elf64_Addr
+      st_size  : Elf64_Xword
+
+    class Elf64_Rel
+      r_offset : Elf64_Addr
+      r_info   : Elf64_Xword                   // getSymbol(r_info) | getType(r_info)
+
+    class Elf64_Rela
+      r_offset : Elf64_Addr
+      r_info   : Elf64_Xword
+      r_addend : Elf64_Sxword
+
+    class Elf64_Dyn
+      d_tag : Elf64_Sxword                     // DT_NULL | DT_NEEDED | DT_STRTAB | DT_SYMTAB | DT_RELA | DT_PLTGOT | DT_SONAME | ...
+      d_un  : Elf64_Xword | Elf64_Addr         // d_val (integer) or d_ptr (address) — chosen by d_tag
+
+    class Elf64_Nhdr
+      n_namesz : Elf64_Word
+      n_descsz : Elf64_Word
+      n_type   : Elf64_Word
+
+    class Elf64_Verdef
+      vd_version : Elf64_Half
+      vd_flags   : Elf64_Half
+      vd_ndx     : Elf64_Half
+      vd_cnt     : Elf64_Half
+      vd_hash    : Elf64_Word
+      vd_aux     : Elf64_Word
+      vd_next    : Elf64_Word
+
+    class Elf64_Verneed
+      vn_version : Elf64_Half
+      vn_cnt     : Elf64_Half
+      vn_file    : Elf64_Word
+      vn_aux     : Elf64_Word
+      vn_next    : Elf64_Word
+
+    class Elf64_Chdr
+      ch_type      : Elf64_Word                // ELFCOMPRESS_ZLIB | ELFCOMPRESS_ZSTD
+      ch_reserved  : Elf64_Word
+      ch_size      : Elf64_Xword
+      ch_addralign : Elf64_Xword
+
+    // ─── Methods — each is a thin spawn of the matching binary ──────────────
+    headers     (file: File) => `llvm-readelf`.run("--all", file.path).stdout
+    program     (file: File) => `llvm-readelf`.run("--program-headers", file.path).stdout
+    sections    (file: File) => `llvm-readelf`.run("--section-headers", file.path).stdout
+    symbols     (file: File) => `llvm-readelf`.run("--symbols", file.path).stdout
+    notes       (file: File) => `llvm-readelf`.run("--notes", file.path).stdout
+    dynamic     (file: File) => `llvm-readelf`.run("--dynamic-table", file.path).stdout
+    relocations (file: File) => `llvm-readelf`.run("--relocations", file.path).stdout
+    elf         (file: File) => `llvm-readobj`.run("--elf-output-style=JSON", "--all", file.path).stdout.json
+    nm          (file: File) => `llvm-nm`.run(file.path).stdout
+    disassemble (file: File) => `llvm-objdump`.run("-d", file.path).stdout
+    addr2line   (file: File, addr: Elf64_Addr) => `llvm-addr2line`.run("-e", file.path, addr).stdout
+    strip       (file: File) => `llvm-strip`.run(file.path)
+    objcopy     (in: File, out: File, args: String[]) => `llvm-objcopy`.run(args, in.path, out.path)
+    size        (file: File) => `llvm-size`.run(file.path).stdout
+    dwarfdump   (file: File) => `llvm-dwarfdump`.run(file.path).stdout
+    symbolize   (file: File, addr: Elf64_Addr) => `llvm-symbolizer`.run("--obj=" file.path, addr).stdout
+    strings     (file: File) => `llvm-strings`.run(file.path).stdout
+    demangle    (sym: String) => `llvm-cxxfilt`.run(sym).stdout
+
+    // ─── Primitive C typedefs from BinaryFormat/ELF.h ───────────────────────
+    Elf64_Half   : typedef = source / "llvm/include/llvm/BinaryFormat/ELF.h"   // uint16_t
+    Elf64_Word   : typedef = source / "llvm/include/llvm/BinaryFormat/ELF.h"   // uint32_t
+    Elf64_Sword  : typedef = source / "llvm/include/llvm/BinaryFormat/ELF.h"   // int32_t
+    Elf64_Xword  : typedef = source / "llvm/include/llvm/BinaryFormat/ELF.h"   // uint64_t
+    Elf64_Sxword : typedef = source / "llvm/include/llvm/BinaryFormat/ELF.h"   // int64_t
+    Elf64_Addr   : typedef = source / "llvm/include/llvm/BinaryFormat/ELF.h"   // uint64_t
+    Elf64_Off    : typedef = source / "llvm/include/llvm/BinaryFormat/ELF.h"   // uint64_t
+    EI_NIDENT    : const   = source / "llvm/include/llvm/BinaryFormat/ELF.h"   // 16
+
+    // ─── Enums sourced from BinaryFormat/ELF.h (no values hand-written) ─────
+    // Defined under `namespace llvm::ELF` in the header.
+    e_ident_class : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // ELFCLASSNONE | ELFCLASS32 | ELFCLASS64
+    e_ident_data  : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // ELFDATANONE | ELFDATA2LSB | ELFDATA2MSB
+    e_ident_osabi : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // ELFOSABI_NONE | ELFOSABI_GNU | ELFOSABI_NETBSD | ELFOSABI_FREEBSD | ELFOSABI_STANDALONE | ...
+    e_type        : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // ET_NONE | ET_REL | ET_EXEC | ET_DYN | ET_CORE | ET_LOOS..ET_HIPROC
+    e_machine     : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // EM_NONE | EM_X86_64 | EM_AARCH64 | EM_RISCV | EM_PPC64 | EM_ARM | EM_BPF | ...
+    e_version     : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // EV_NONE | EV_CURRENT
+    p_type        : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // PT_NULL | PT_LOAD | PT_DYNAMIC | PT_INTERP | PT_NOTE | PT_PHDR | PT_TLS | PT_GNU_EH_FRAME | PT_GNU_STACK | PT_GNU_RELRO | PT_GNU_PROPERTY
+    p_flags       : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // PF_X | PF_W | PF_R
+    sh_type       : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // SHT_NULL | SHT_PROGBITS | SHT_SYMTAB | SHT_STRTAB | SHT_RELA | SHT_HASH | SHT_DYNAMIC | SHT_NOTE | SHT_NOBITS | SHT_REL | SHT_SHLIB | SHT_DYNSYM | SHT_INIT_ARRAY | SHT_FINI_ARRAY | SHT_PREINIT_ARRAY | SHT_GROUP | SHT_SYMTAB_SHNDX | SHT_LLVM_*
+    sh_flags      : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // SHF_WRITE | SHF_ALLOC | SHF_EXECINSTR | SHF_MERGE | SHF_STRINGS | SHF_INFO_LINK | SHF_LINK_ORDER | SHF_OS_NONCONFORMING | SHF_GROUP | SHF_TLS | SHF_COMPRESSED
+    SHN           : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // SHN_UNDEF | SHN_LORESERVE | SHN_ABS | SHN_COMMON | SHN_XINDEX
+    STB           : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // STB_LOCAL | STB_GLOBAL | STB_WEAK | STB_GNU_UNIQUE
+    STT           : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // STT_NOTYPE | STT_OBJECT | STT_FUNC | STT_SECTION | STT_FILE | STT_COMMON | STT_TLS | STT_GNU_IFUNC
+    STV           : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // STV_DEFAULT | STV_INTERNAL | STV_HIDDEN | STV_PROTECTED
+    DT            : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // DT_NULL | DT_NEEDED | DT_PLTRELSZ | DT_PLTGOT | DT_HASH | DT_STRTAB | DT_SYMTAB | DT_RELA | DT_INIT | DT_FINI | DT_SONAME | DT_RPATH | DT_RUNPATH | DT_FLAGS | DT_FLAGS_1 | ...
+    NT            : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // NT_PRSTATUS | NT_FPREGSET | NT_PRPSINFO | NT_AUXV | NT_FILE | NT_GNU_BUILD_ID | NT_GNU_PROPERTY_TYPE_0 | NT_LLVM_*
+    R_X86_64      : enum = source / "llvm/include/llvm/BinaryFormat/ELFRelocs/x86_64.def"   // R_X86_64_NONE | R_X86_64_64 | R_X86_64_PC32 | R_X86_64_PLT32 | R_X86_64_GOTPCREL | ...
+    R_AARCH64     : enum = source / "llvm/include/llvm/BinaryFormat/ELFRelocs/AArch64.def"  // R_AARCH64_NONE | R_AARCH64_ABS64 | R_AARCH64_CALL26 | R_AARCH64_ADR_PREL_PG_HI21 | ...
+    R_RISCV       : enum = source / "llvm/include/llvm/BinaryFormat/ELFRelocs/RISCV.def"    // R_RISCV_NONE | R_RISCV_32 | R_RISCV_64 | R_RISCV_BRANCH | R_RISCV_JAL | R_RISCV_CALL | ...
+    ELFCOMPRESS   : enum = source / "llvm/include/llvm/BinaryFormat/ELF.h"     // ELFCOMPRESS_ZLIB | ELFCOMPRESS_ZSTD | ELFCOMPRESS_LOOS..ELFCOMPRESS_HIPROC
+
+  And the format file, expressed only via ELF.h's own names — Section/Segment/Symbol become dispatch on header.type, not
+  invented subclasses:
+
+  // .ray3/Format/ELF.ray — ELF binary format lifted from LLVM's BinaryFormat/ELF.h.
+  namespace ELF | "Executable and Linkable Format" < Language(".elf" | ".o" | ".so" | ".ko" | ".a" | "")
+    location &= "https://refspecs.linuxbase.org/elf/gabi4+/contents.html"
+             &  "https://llvm.org/doxygen/namespacellvm_1_1ELF.html"
+
+    // ─── File structure ─────────────────────────────────────────────────────
+    class file
+      // ehdr is the initial element of every ELF — same role ⊢ plays in Ray.ray.
+      ehdr | (internal ⊢) : LLVM.Elf64_Ehdr
+      phdrs : LLVM.Elf64_Phdr[ehdr.e_phnum]
+      shdrs : LLVM.Elf64_Shdr[ehdr.e_shnum]
+
+      dynamically assert ehdr.e_ident[EI_MAG0..EI_MAG3] == {0x7F, 'E', 'L', 'F'}
+      dynamically assert ehdr.e_phentsize == sizeof(LLVM.Elf64_Phdr)
+      dynamically assert ehdr.e_shentsize == sizeof(LLVM.Elf64_Shdr)
+
+      shstrtab => shdrs[ehdr.e_shstrndx]
+      strtab   => shdrs ~ {.sh_type == SHT_STRTAB & name == ".strtab"}.first
+      symtab   => shdrs ~ {.sh_type == SHT_SYMTAB}.first
+      dynsym   => shdrs ~ {.sh_type == SHT_DYNSYM}.first
+      dynamic  => shdrs ~ {.sh_type == SHT_DYNAMIC}.first
+
+    // Dispatch on LLVM's p_type enum; there are no other categories.
+    class segment < LLVM.Elf64_Phdr
+      => match p_type
+        PT_NULL    => None
+        PT_LOAD    => bytes[p_offset, p_filesz]
+        PT_DYNAMIC => LLVM.Elf64_Dyn[p_filesz / sizeof(LLVM.Elf64_Dyn)]
+        PT_INTERP  => CString @ p_offset
+        PT_NOTE    => note[]
+        PT_PHDR    => LLVM.Elf64_Phdr[ehdr.e_phnum]
+        PT_TLS     => bytes[p_offset, p_filesz]
+
+    // Dispatch on LLVM's sh_type enum.
+    class section < LLVM.Elf64_Shdr
+      name => shstrtab @ sh_name
+
+      => match sh_type
+        SHT_NULL       => None
+        SHT_PROGBITS   => bytes[sh_offset, sh_size]
+        SHT_SYMTAB     => LLVM.Elf64_Sym[sh_size / sh_entsize]
+        SHT_DYNSYM     => LLVM.Elf64_Sym[sh_size / sh_entsize]
+        SHT_STRTAB     => CString[] @ sh_offset
+        SHT_RELA       => LLVM.Elf64_Rela[sh_size / sh_entsize]
+        SHT_REL        => LLVM.Elf64_Rel[sh_size / sh_entsize]
+        SHT_HASH       => bytes[sh_offset, sh_size]
+        SHT_DYNAMIC    => LLVM.Elf64_Dyn[sh_size / sh_entsize]
+        SHT_NOTE       => note[]
+        SHT_NOBITS     => bytes[0, sh_size]                  // zero-filled at load
+        SHT_INIT_ARRAY => LLVM.Elf64_Addr[sh_size / 8]
+        SHT_FINI_ARRAY => LLVM.Elf64_Addr[sh_size / 8]
+        SHT_GROUP      => LLVM.Elf64_Word[sh_size / 4]
+
+    class symbol < LLVM.Elf64_Sym
+      name    => (sh_link as section).body @ st_name
+      bind    => st_info >> 4              // STB_*
+      type    => st_info & 0xF             // STT_*
+      visible => st_other & 0x3            // STV_*
+
+      => name " " bind " " type " @ " (st_value as Hex) " +" st_size
+
+    class note < LLVM.Elf64_Nhdr
+      name : CString[n_namesz]             // "GNU" | "CORE" | "LLVM" | "stapsdt" | ...
+      desc : bytes[n_descsz]
+      => name "/" n_type ": " desc.length " bytes"
+
+    class relocation < LLVM.Elf64_Rela
+      sym  => r_info >> 32                          // getSymbol(r_info)
+      kind => r_info & 0xFFFFFFFF                   // getType(r_info) — R_X86_64_* / R_AARCH64_* / R_RISCV_*
+
+    // ─── Terminal sets — every one of these is "ask LLVM" ───────────────────
+    Class       = LLVM.e_ident_class             // ELFCLASS32 | ELFCLASS64
+    Encoding    = LLVM.e_ident_data              // ELFDATA2LSB | ELFDATA2MSB
+    OSABI       = LLVM.e_ident_osabi             // ELFOSABI_NONE | ELFOSABI_GNU | ELFOSABI_FREEBSD | ...
+    Type        = LLVM.e_type                    // ET_REL | ET_EXEC | ET_DYN | ET_CORE
+    Machine     = LLVM.e_machine                 // EM_X86_64 | EM_AARCH64 | EM_RISCV | ...
+    SegmentType = LLVM.p_type
+    SectionType = LLVM.sh_type
+    DynamicTag  = LLVM.DT
+    NoteType    = LLVM.NT
+    RelocKind   = LLVM.R_X86_64 | LLVM.R_AARCH64 | LLVM.R_RISCV
+
+    // ─── Loading ────────────────────────────────────────────────────────────
+    load (path: Path) : file =>
+      dynamically assert LLVM.elf(File(path)).FileHeader.Magic == [0x7F, 'E', 'L', 'F']
+      File(path).bytes.parse(file)
+
+    // ELF is a binary, little-endian-or-big-endian format; surface direction is
+    // whatever e_ident[EI_DATA] says.
+    direction = (ehdr.e_ident[EI_DATA] == ELFDATA2LSB) ? little-endian : big-endian
